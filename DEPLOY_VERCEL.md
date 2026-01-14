@@ -43,4 +43,9 @@ Como o projeto usa `react-router-dom`, se você atualizar a página em uma rota 
 ## 7. Próximos Passos no Supabase
 Para que o sistema funcione 100%, lembre-se de:
 1. Executar o script `schema.sql` no **SQL Editor** do Supabase.
-2. Configurar a URL do seu site da Vercel em **Authentication > URL Configuration > Site URL** no painel do Supabase para que os redirecionamentos de login funcionem corretamente.
+2. **Configuração no Supabase (Crucial para Auth)**:
+Para que o login, recuperação de senha e links de e-mail funcionem, você deve configurar o Supabase:
+1. Acesse seu painel do Supabase > Authentication > URL Configuration.
+2. Em **Site URL**, coloque: `https://detailcrm.daxensolucoes.com.br`
+3. Em **Redirect URLs**, adicione: `https://detailcrm.daxensolucoes.com.br/auth/callback`
+4. **Importante**: Se você usa o link de recuperação de senha, o Supabase precisa saber para onde redirecionar. Verifique se o link de recuperação de senha no Supabase está configurado para `https://detailcrm.daxensolucoes.com.br/reset-password` (ou o caminho que você usa).
