@@ -12,6 +12,7 @@ import Configuracoes from "@/pages/Configuracoes";
 import EmpresaUsuarios from "@/pages/EmpresaUsuarios";
 import Chat from "@/pages/Chat";
 import Login from "@/pages/Login";
+import AuthCallback from "@/pages/AuthCallback";
 import NotFound from "@/pages/NotFound";
 import DashboardGlobal from "@/pages/admin-global/DashboardGlobal";
 import Empresas from "@/pages/admin-global/Empresas";
@@ -38,6 +39,7 @@ export const AppRouter = () => (
     <Routes>
       {/* Public routes */}
       <Route path="/login" element={<Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       
       {/* Protected routes with layout */}
       <Route path="/" element={
