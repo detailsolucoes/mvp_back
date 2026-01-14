@@ -64,7 +64,7 @@ export default function Login() {
         title: 'Login bem-sucedido!',
         description: 'Redirecionando para o dashboard.',
       });
-      navigate(from, { replace: true });
+      // O useEffect cuidará do redirecionamento baseado no estado isAuthenticated
     } else {
       toast({
         title: 'Erro de Login',
