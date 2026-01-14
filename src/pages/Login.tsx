@@ -10,62 +10,28 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { Crown, Building2, ArrowRight, UserCircle } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 const loginSchema = z.object({
   email: z.string().email('E-mail inválido'),
   password: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres'),
 });
 
+const forgotPasswordSchema = z.object({
+  email: z.string().email('E-mail inválido'),
+});
+
 type LoginFormValues = z.infer<typeof loginSchema>;
-
-interface UserPreset {
-  name: string;
-  email: string;
-  password: string;
-  role: string;
-  description: string;
-  icon: React.ReactNode;
-  color: string;
-}
-
-const userPresets: UserPreset[] = [
-  {
-    name: 'Administrador Global',
-    email: 'admin@detailsolucoes.com',
-    password: '123456',
-    role: 'super_admin',
-    description: 'Acesso total ao sistema e gerenciamento de todas as empresas',
-    icon: <Crown className="w-5 h-5" />,
-    color: 'from-purple-500 to-pink-500',
-  },
-  {
-    name: 'Empresa - Detail Soluções',
-    email: 'empresa1@test.com',
-    password: '123456',
-    role: 'admin',
-    description: 'Acesso ao painel da empresa com personalização de logo e nome',
-    icon: <Building2 className="w-5 h-5" />,
-    color: 'from-blue-500 to-cyan-500',
-  },
-  {
-    name: 'Atendente - Detail Soluções',
-    email: 'atendente@test.com',
-    password: '123456',
-    role: 'attendant',
-    description: 'Acesso operacional para atendimento e gestão de pedidos',
-    icon: <UserCircle className="w-5 h-5" />,
-    color: 'from-emerald-500 to-teal-500',
-  },
-];
+type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, isAuthenticated } = useAuth();
-  const [selectedPreset, setSelectedPreset] = useState<UserPreset | null>(null);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/';
 
@@ -75,23 +41,22 @@ export default function Login() {
     }
   }, [isAuthenticated, navigate, from]);
 
-  const form = useForm<LoginFormValues>({
+  const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: selectedPreset?.email || '',
-      password: selectedPreset?.password || '',
+      email: '',
+      password: '',
     },
   });
 
-  const { handleSubmit, formState: { isSubmitting }, setValue } = form;
+  const forgotPasswordForm = useForm<ForgotPasswordFormValues>({
+    resolver: zodResolver(forgotPasswordSchema),
+    defaultValues: {
+      email: '',
+    },
+  });
 
-  const handlePresetSelect = (preset: UserPreset) => {
-    setSelectedPreset(preset);
-    setValue('email', preset.email);
-    setValue('password', preset.password);
-  };
-
-  const onSubmit = async (values: LoginFormValues) => {
+  const onLoginSubmit = async (values: LoginFormValues) => {
     const success = await login(values.email, values.password);
 
     if (success) {
@@ -109,8 +74,36 @@ export default function Login() {
     }
   };
 
+  const onForgotPasswordSubmit = async (values: ForgotPasswordFormValues) => {
+    setIsSendingReset(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    setIsSendingReset(false);
+    if (error) {
+      toast({
+        title: 'Erro ao enviar e-mail',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'E-mail enviado!',
+        description: 'Verifique sua caixa de entrada para redefinir sua senha.',
+      });
+      setIsForgotPassword(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden -z-10">
+        <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-3xl" />
+        <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-3xl" />
+      </div>
+
       {/* Theme toggle */}
       <div className="absolute top-4 right-4">
         <ThemeToggle />
@@ -120,140 +113,145 @@ export default function Login() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="w-full max-w-4xl"
+        className="w-full max-w-md"
       >
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Painel de Seleção de Usuários */}
-          <div className="space-y-4">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold gradient-text mb-2">Escolha o tipo de acesso</h2>
-              <p className="text-muted-foreground">Selecione um dos usuários de teste para explorar o sistema</p>
-            </div>
-
-            <div className="space-y-3">
-              {userPresets.map((preset, index) => (
-                <motion.button
-                  key={index}
-                  onClick={() => handlePresetSelect(preset)}
+        <Card className="gradient-border-card shadow-xl">
+          <CardHeader className="text-center space-y-4">
+            <motion.img 
+              src={logo} 
+              alt="Detail Soluções" 
+              className="h-20 w-auto mx-auto rounded-xl shadow-sm"
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              transition={{ duration: 0.3 }}
+            />
+            <AnimatePresence mode="wait">
+              {!isForgotPassword ? (
+                <motion.div
+                  key="login-header"
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
-                    selectedPreset?.email === preset.email
-                      ? 'border-primary bg-primary/10'
-                      : 'border-muted hover:border-primary/50'
-                  }`}
+                  exit={{ opacity: 0, x: 20 }}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className={`bg-gradient-to-br ${preset.color} p-2 rounded-lg text-white mt-1`}>
-                        {preset.icon}
+                  <CardTitle className="text-2xl font-bold">Bem-vindo de volta</CardTitle>
+                  <CardDescription>Acesse sua conta para gerenciar seus pedidos</CardDescription>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="forgot-header"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                >
+                  <CardTitle className="text-2xl font-bold">Recuperar senha</CardTitle>
+                  <CardDescription>Enviaremos um link para o seu e-mail</CardDescription>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </CardHeader>
+          <CardContent>
+            <AnimatePresence mode="wait">
+              {!isForgotPassword ? (
+                <motion.div
+                  key="login-form"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <Form {...loginForm}>
+                    <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
+                      <FormField
+                        control={loginForm.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>E-mail</FormLabel>
+                            <FormControl>
+                              <Input placeholder="seu@email.com" {...field} className="bg-muted/30" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={loginForm.control}
+                        name="password"
+                        render={({ field }) => (
+                          <FormItem>
+                            <div className="flex items-center justify-between">
+                              <FormLabel>Senha</FormLabel>
+                              <Button 
+                                type="button" 
+                                variant="link" 
+                                className="px-0 font-normal text-xs"
+                                onClick={() => setIsForgotPassword(true)}
+                              >
+                                Esqueceu a senha?
+                              </Button>
+                            </div>
+                            <FormControl>
+                              <Input type="password" placeholder="••••••••" {...field} className="bg-muted/30" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button 
+                        type="submit" 
+                        className="w-full h-11 font-semibold shadow-lg shadow-primary/20" 
+                        disabled={loginForm.formState.isSubmitting}
+                      >
+                        {loginForm.formState.isSubmitting ? 'Entrando...' : 'Entrar'}
+                      </Button>
+                    </form>
+                  </Form>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="forgot-form"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <Form {...forgotPasswordForm}>
+                    <form onSubmit={forgotPasswordForm.handleSubmit(onForgotPasswordSubmit)} className="space-y-4">
+                      <FormField
+                        control={forgotPasswordForm.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>E-mail cadastrado</FormLabel>
+                            <FormControl>
+                              <Input placeholder="seu@email.com" {...field} className="bg-muted/30" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <div className="space-y-2">
+                        <Button 
+                          type="submit" 
+                          className="w-full h-11 font-semibold shadow-lg shadow-primary/20" 
+                          disabled={isSendingReset}
+                        >
+                          {isSendingReset ? 'Enviando...' : 'Enviar link de recuperação'}
+                        </Button>
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          className="w-full"
+                          onClick={() => setIsForgotPassword(false)}
+                        >
+                          Voltar para o login
+                        </Button>
                       </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-foreground">{preset.name}</h3>
-                        <p className="text-sm text-muted-foreground">{preset.description}</p>
-                        <div className="mt-2 space-y-1">
-                          <p className="text-xs font-mono text-muted-foreground">
-                            <span className="text-primary">Email:</span> {preset.email}
-                          </p>
-                          <p className="text-xs font-mono text-muted-foreground">
-                            <span className="text-primary">Senha:</span> {preset.password}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    {selectedPreset?.email === preset.email && (
-                      <ArrowRight className="w-5 h-5 text-primary mt-1" />
-                    )}
-                  </div>
-                </motion.button>
-              ))}
-            </div>
-          </div>
-
-          {/* Formulário de Login */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 }}
-          >
-            <Card className="gradient-border-card h-full flex flex-col">
-              <CardHeader className="text-center space-y-4">
-                <motion.img 
-                  src={logo} 
-                  alt="Detail Soluções" 
-                  className="h-16 w-auto mx-auto rounded-lg"
-                  initial={{ scale: 0.8 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: 0.1, duration: 0.3 }}
-                />
-                <div>
-                  <CardTitle className="text-xl">Acesse sua conta</CardTitle>
-                  {selectedPreset && (
-                    <CardDescription className="mt-2">
-                      Entrando como <span className="font-semibold text-foreground">{selectedPreset.name}</span>
-                    </CardDescription>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-between">
-                <Form {...form}>
-                  <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                    <FormField
-                      control={form.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel htmlFor="email">E-mail</FormLabel>
-                          <FormControl>
-                            <Input
-                              id="email"
-                              type="email"
-                              placeholder="seu@email.com"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel htmlFor="password">Senha</FormLabel>
-                          <FormControl>
-                            <Input
-                              id="password"
-                              type="password"
-                              placeholder="••••••••"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <Button 
-                      type="submit" 
-                      className="w-full" 
-                      disabled={isSubmitting || !selectedPreset}
-                    >
-                      {isSubmitting ? 'Entrando...' : 'Entrar'}
-                    </Button>
-                  </form>
-                </Form>
-
-                <div className="mt-6 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground border border-muted">
-                  <p className="font-medium mb-2 text-foreground">💡 Dica:</p>
-                  <p>Selecione um dos usuários à esquerda para testar as diferentes visualizações do sistema.</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
+                    </form>
+                  </Form>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </CardContent>
+        </Card>
       </motion.div>
     </div>
   );
