@@ -57,16 +57,30 @@ export default function Login() {
   });
 
   const onLoginSubmit = async (values: LoginFormValues) => {
-    const success = await login(values.email, values.password);
+    const user = await login(values.email, values.password);
 
-    if (success) {
+    if (user) {
       toast({
         title: 'Login bem-sucedido!',
-        description: 'Redirecionando para o dashboard.',
+        description: `Bem-vindo, ${user.name}!`,
       });
-      // Forçamos a navegação imediata para garantir o redirecionamento
-      navigate(from, { replace: true });
+      
+      // Lógica de redirecionamento baseada na role
+      let targetPath = from;
+      
+      if (from === '/') {
+        if (user.role === 'super_admin') {
+          targetPath = '/admin-global/dashboard';
+        } else if (user.role === 'attendant') {
+          targetPath = '/pedidos';
+        } else {
+          targetPath = '/';
+        }
+      }
+
+      navigate(targetPath, { replace: true });
     } else {
+      console.error('Failed to login');
       toast({
         title: 'Erro de Login',
         description: 'E-mail ou senha inválidos.',

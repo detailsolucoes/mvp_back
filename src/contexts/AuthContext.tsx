@@ -13,7 +13,7 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<User | null>;
   logout: () => void;
 }
 
@@ -64,14 +64,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   };
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<User | null> => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return false;
     
-    if (data.session) {
-      await fetchProfile(data.session.user.id);
+    if (error || !data.session) {
+      return null;
     }
-    return true;
+    
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.session.user.id)
+      .single();
+
+    if (profile) {
+      const userData: User = {
+        id: profile.id,
+        email: profile.email || data.session.user.email || '',
+        name: profile.name,
+        role: profile.role,
+        companyId: profile.company_id,
+      };
+      setUser(userData);
+      setIsLoading(false);
+      return userData;
+    }
+    
+    return null;
   };
 
   const logout = async () => {
