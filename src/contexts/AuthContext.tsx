@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '@/lib/supabase';
 
 interface User {
   id: string;
@@ -18,60 +19,59 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'detail_auth_user';
-
-// Mock users for demonstration
-const MOCK_USERS = [
-  { id: '1', email: 'admin@detailsolucoes.com', password: '123456', name: 'Super Admin', role: 'super_admin' },
-  { id: '2', email: 'empresa1@test.com', password: '123456', name: 'Empresa 1 Admin', role: 'admin', companyId: 'company-001' },
-  { id: '3', email: 'empresa2@test.com', password: '123456', name: 'Empresa 2 Admin', role: 'admin', companyId: 'company-002' },
-  { id: '4', email: 'atendente@test.com', password: '123456', name: 'Atendente Teste', role: 'attendant', companyId: 'company-001' },
-];
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session on mount
-    const storedUser = localStorage.getItem(STORAGE_KEY);
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        localStorage.removeItem(STORAGE_KEY);
+    // Check active sessions and subscribe to auth changes
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        fetchProfile(session.user.id);
+      } else {
+        setIsLoading(false);
       }
-    }
-    setIsLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        fetchProfile(session.user.id);
+      } else {
+        setUser(null);
+        setIsLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 800));
+  const fetchProfile = async (userId: string) => {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*, companies(*)')
+      .eq('id', userId)
+      .single();
 
-    const foundUser = MOCK_USERS.find(
-      u => u.email === email && u.password === password
-    );
-
-    if (foundUser) {
-      const userData: User = {
-        id: foundUser.id,
-        email: foundUser.email,
-        name: foundUser.name,
-        role: foundUser.role as any,
-        companyId: foundUser.companyId,
-      };
-      setUser(userData);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-      return true;
+    if (!error && profile) {
+      setUser({
+        id: profile.id,
+        email: profile.email || '',
+        name: profile.name,
+        role: profile.role,
+        companyId: profile.company_id,
+      });
     }
-
-    return false;
+    setIsLoading(false);
   };
 
-  const logout = () => {
+  const login = async (email: string, password: string): Promise<boolean> => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return !error;
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
   };
 
   return (

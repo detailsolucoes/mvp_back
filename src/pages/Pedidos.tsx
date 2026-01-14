@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { mockOrders } from '@/data/mockData';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ShoppingCart, Plus, ChevronRight, User, Phone, MapPin, Clock, CreditCard, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { OrderForm } from '@/components/forms/OrderForm';
 import type { Order, OrderStatus } from '@/types';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/constants';
+import { useAuth } from '@/contexts/AuthContext';
 
 const columns: { id: OrderStatus; label: string }[] = [
   { id: 'recebido', label: ORDER_STATUS_LABELS.recebido },
@@ -71,18 +73,18 @@ function OrderDetailsPopup({ order }: { order: Order }) {
                 </span>
                 <span>{item.productName}</span>
               </div>
-              <span className="font-medium">R$ {(item.price * item.quantity).toFixed(2).replace('.', ',')}</span>
+              <span className="font-medium">R$ {(item.unitPrice * item.quantity).toFixed(2).replace('.', ',')}</span>
             </div>
           ))}
         </div>
         <div className="bg-muted/30 px-4 py-3 space-y-1">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
-            <span>R$ {(order.total - 5).toFixed(2).replace('.', ',')}</span>
+            <span>R$ {(order.total - order.deliveryFee).toFixed(2).replace('.', ',')}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Taxa de Entrega</span>
-            <span>R$ 5,00</span>
+            <span>R$ {order.deliveryFee.toFixed(2).replace('.', ',')}</span>
           </div>
           <div className="flex justify-between items-center pt-2 border-t font-bold text-lg text-primary">
             <span>Total</span>
@@ -261,9 +263,89 @@ function KanbanColumn({
 }
 
 export default function Pedidos() {
-  const [orders, setOrders] = useState<Order[]>(mockOrders);
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [draggedOrderId, setDraggedOrderId] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // Fetch orders
+  const { data: orders = [] } = useQuery({
+    queryKey: ['orders', user?.companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*, order_items(*), customers(*)')
+        .eq('company_id', user?.companyId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      // Map to frontend type
+      return data.map((o: any) => ({
+        id: o.id,
+        companyId: o.company_id,
+        customerId: o.customer_id,
+        customerName: o.customers.name,
+        customerWhatsapp: o.customers.whatsapp,
+        customerAddress: o.customers.address,
+        items: o.order_items.map((i: any) => ({
+          id: i.id,
+          productId: i.product_id,
+          productName: i.product_name,
+          quantity: i.quantity,
+          unitPrice: i.unit_price,
+          subtotal: i.subtotal
+        })),
+        total: o.total,
+        deliveryFee: o.delivery_fee,
+        status: o.status,
+        paymentMethod: o.payment_method,
+        notes: o.notes,
+        createdAt: o.created_at,
+        updatedAt: o.updated_at
+      }));
+    },
+    enabled: !!user?.companyId
+  });
+
+  // Realtime subscription
+  useEffect(() => {
+    if (!user?.companyId) return;
+
+    const channel = supabase
+      .channel('orders-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `company_id=eq.${user.companyId}`
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['orders'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.companyId, queryClient]);
+
+  // Update status mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: string, status: OrderStatus }) => {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status })
+        .eq('id', orderId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    }
+  });
 
   const handleDragStart = (e: React.DragEvent, orderId: string) => {
     setDraggedOrderId(orderId);
@@ -279,18 +361,8 @@ export default function Pedidos() {
     e.preventDefault();
     if (!draggedOrderId) return;
 
-    updateOrderStatus(draggedOrderId, newStatus);
+    updateStatusMutation.mutate({ orderId: draggedOrderId, status: newStatus });
     setDraggedOrderId(null);
-  };
-
-  const updateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
-    setOrders((prevOrders) =>
-      prevOrders.map((order) =>
-        order.id === orderId
-          ? { ...order, status: newStatus, updatedAt: new Date().toISOString() }
-          : order
-      )
-    );
   };
 
   const handleAdvance = (orderId: string, currentStatus: OrderStatus) => {
@@ -299,17 +371,18 @@ export default function Pedidos() {
     
     if (currentIndex !== -1 && currentIndex < statusFlow.length - 1) {
       const nextStatus = statusFlow[currentIndex + 1];
-      updateOrderStatus(orderId, nextStatus);
+      updateStatusMutation.mutate({ orderId, status: nextStatus });
     }
   };
 
   const handleCreateOrder = (newOrder: Order) => {
-    setOrders(prev => [newOrder, ...prev]);
+    // In a real app, this would be a mutation to create the order in Supabase
     setIsDialogOpen(false);
+    queryClient.invalidateQueries({ queryKey: ['orders'] });
   };
 
   const getOrdersByStatus = (status: OrderStatus) => {
-    return orders.filter((order) => order.status === status);
+    return orders.filter((order: Order) => order.status === status);
   };
 
   return (
