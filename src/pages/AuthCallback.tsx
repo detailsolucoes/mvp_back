@@ -11,30 +11,34 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
-        // 1. Processa o código na URL para estabelecer a sessão
-        const { data, error } = await supabase.auth.getSession();
+        // 1. Tenta obter a sessão atual (o Supabase processa o hash da URL automaticamente)
+        const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) throw error;
 
-        if (data.session) {
-          const userId = data.session.user.id;
+        // Verifica se há indicação de convite na URL (hash ou query)
+        const isInvite = window.location.hash.includes('type=invite') || 
+                         window.location.search.includes('type=invite') ||
+                         window.location.hash.includes('type=recovery') ||
+                         window.location.search.includes('type=recovery');
+
+        if (session) {
+          const userId = session.user.id;
           
-          // 1.5 Verifica se é um convite (invite)
-          // Se o usuário não tem nome no perfil, provavelmente é um convite novo
-          const { data: profile, error: profileError } = await supabase
+          // Busca o perfil
+          const { data: profile } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', userId)
             .single();
 
-          if (profileError) throw profileError;
-
-          if (!profile.name || profile.name === '') {
+          // Se for um convite ou se o perfil não tiver nome, vai para completar cadastro
+          if (isInvite || !profile?.name) {
             navigate('/complete-signup', { replace: true });
             return;
           }
 
-          // 3. Redireciona baseado na role
+          // Redirecionamento padrão por role
           if (profile.role === 'super_admin') {
             navigate('/admin-global/dashboard', { replace: true });
           } else if (profile.role === 'attendant') {
@@ -43,11 +47,13 @@ export default function AuthCallback() {
             navigate('/', { replace: true });
           }
         } else {
-          // Se não houver sessão, volta para o login
-          navigate('/login', { replace: true });
+          // Se não houver sessão mas for um link de auth, aguarda um pouco ou vai para login
+          setTimeout(() => {
+            navigate('/login', { replace: true });
+          }, 2000);
         }
       } catch (error) {
-        console.error('Erro no callback de autenticação:', error);
+        console.error('Erro no callback:', error);
         navigate('/login', { replace: true });
       }
     };

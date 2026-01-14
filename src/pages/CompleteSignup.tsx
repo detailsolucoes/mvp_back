@@ -21,14 +21,18 @@ export default function CompleteSignup() {
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      
+      // Se não houver sessão, tenta ver se o Supabase acabou de colocar os tokens no hash da URL
+      if (!session && !window.location.hash.includes('access_token')) {
         toast({
           title: 'Acesso negado',
           description: 'Link de convite inválido ou expirado.',
           variant: 'destructive',
         });
         navigate('/login');
+        return;
       }
+      
       setIsChecking(false);
     };
     checkSession();
