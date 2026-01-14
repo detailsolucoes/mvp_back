@@ -19,7 +19,8 @@ export default function AuthCallback() {
         if (data.session) {
           const userId = data.session.user.id;
           
-          // 2. Busca o perfil para decidir o redirecionamento
+          // 1.5 Verifica se é um convite (invite)
+          // Se o usuário não tem nome no perfil, provavelmente é um convite novo
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('*')
@@ -27,6 +28,11 @@ export default function AuthCallback() {
             .single();
 
           if (profileError) throw profileError;
+
+          if (!profile.name || profile.name === '') {
+            navigate('/complete-signup', { replace: true });
+            return;
+          }
 
           // 3. Redireciona baseado na role
           if (profile.role === 'super_admin') {

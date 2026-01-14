@@ -14,6 +14,7 @@ import Chat from "@/pages/Chat";
 import Login from "@/pages/Login";
 import AuthCallback from "@/pages/AuthCallback";
 import ResetPassword from "@/pages/ResetPassword";
+import CompleteSignup from "@/pages/CompleteSignup";
 import NotFound from "@/pages/NotFound";
 import DashboardGlobal from "@/pages/admin-global/DashboardGlobal";
 import Empresas from "@/pages/admin-global/Empresas";
@@ -42,6 +43,7 @@ export const AppRouter = () => (
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/complete-signup" element={<CompleteSignup />} />
       
       {/* Protected routes with layout */}
       <Route path="/" element={
